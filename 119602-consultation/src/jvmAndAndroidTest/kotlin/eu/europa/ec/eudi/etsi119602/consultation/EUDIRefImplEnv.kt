@@ -29,6 +29,7 @@ import kotlinx.io.files.Path
 import java.nio.file.Files
 import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
+import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.fail
@@ -50,6 +51,7 @@ object EUDIRefImplEnv {
 
 class EUDIRefImplEnvTest {
     @Test
+    @Ignore("Unstable network-based test")
     @SensitiveApi
     fun testDownload() = runTest {
         createHttpClient().use { httpClient ->
@@ -265,6 +267,7 @@ class EUDIRefImplEnvTest {
     }
 
     @Test
+    @Ignore("Unstable network-based test")
     @OptIn(SensitiveApi::class)
     fun testCertificateTrust() = runTest {
         createHttpClient().use { httpClient ->

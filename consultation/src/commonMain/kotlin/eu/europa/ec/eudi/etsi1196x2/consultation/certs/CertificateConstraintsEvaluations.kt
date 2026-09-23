@@ -53,16 +53,16 @@ public object CertificateConstraintsEvaluations {
     }
 
     public fun mandatoryQcType(
-        statements: List<QCStatementInfo>,
-        qcType: String,
+        qcTypes: List<QCStatementInfo.QcType>,
+        innerIdentifier: String,
     ): CertificateConstraintEvaluation = CertificateConstraintEvaluation {
         when {
-            statements.isEmpty() -> {
-                add(certificateDoesNotContainAnyQCStatement)
+            qcTypes.isEmpty() -> {
+                add(certificateDoesNotContainAnyQCType)
             }
 
-            statements.none { it.semanticOid == qcType } -> {
-                add(certificateDoesNotContainRequiredQCStatement(qcType, statements))
+            qcTypes.none { it.innerIdentifier == innerIdentifier } -> {
+                add(certificateDoesNotContainRequiredQCType(innerIdentifier, qcTypes))
             }
         }
     }
@@ -303,17 +303,15 @@ public object CertificateConstraintsEvaluations {
     public fun evaluateCrlDistributionPointsIfNoOcspAndNotValAssured(
         crldp: List<CrlDistributionPoint>,
         aia: AuthorityInformationAccess?,
-        qcStatements: List<QCStatementInfo>,
+        hasValAssured: Boolean,
     ): CertificateConstraintEvaluation = CertificateConstraintEvaluation {
         // Exempt if OCSP responder is present in AIA
         val hasOcsp = aia?.ocspUri != null
         if (hasOcsp) return@CertificateConstraintEvaluation
 
-        // Exempt if validity-assured short-term certificate QC statement is present
-        val isValAssured = qcStatements.any {
-            it.semanticOid == ETSI319412Part1.EXT_ETSI_VAL_ASSURED_ST_CERTS
-        }
-        if (isValAssured) return@CertificateConstraintEvaluation
+        // Exempt if the certificate carries the validity-assured short-term
+        // extension (ETSI EN 319 412-1 clause 5.2, EN 319 412-2 GEN-4.3.11-2)
+        if (hasValAssured) return@CertificateConstraintEvaluation
 
         // Otherwise, CRLDP must be present with at least one valid URI
         if (crldp.isEmpty() || crldp.all { it.distributionPointUri.isNullOrBlank() }) {
@@ -332,16 +330,28 @@ public object CertificateConstraintsEvaluations {
     public fun evaluateQcStatementsForPolicy(
         policies: List<String>?,
         qcStatements: List<QCStatementInfo>,
-        rules: (String) -> List<String>,
+        rules: (String) -> List<QCStatementInfo>,
     ): CertificateConstraintEvaluation = CertificateConstraintEvaluation {
         val policyList = policies ?: emptyList()
-        val requiredQcTypes = policyList
+        val requiredQcStatements = policyList
             .flatMap { rules(it) }
             .toSet()
 
-        for (requiredType in requiredQcTypes) {
-            if (qcStatements.none { it.semanticOid == requiredType }) {
-                add(certificateDoesNotContainRequiredQCStatement(requiredType, qcStatements))
+        val qcTypes = qcStatements.filterIsInstance<QCStatementInfo.QcType>()
+        val otherQcStatements = qcStatements.filterIsInstance<QCStatementInfo.OtherQcStatement>()
+
+        for (requiredQcStatment in requiredQcStatements) {
+            when (requiredQcStatment) {
+                is QCStatementInfo.QcType -> {
+                    if (requiredQcStatment !in qcTypes) {
+                        add(certificateDoesNotContainRequiredQCType(requiredQcStatment.innerIdentifier, qcTypes))
+                    }
+                }
+                is QCStatementInfo.OtherQcStatement -> {
+                    if (requiredQcStatment !in otherQcStatements) {
+                        add(certificateDoesNotContainRequiredQCStatement(requiredQcStatment.statementId, otherQcStatements))
+                    }
+                }
             }
         }
     }
@@ -391,13 +401,13 @@ public object CertificateConstraintsEvaluations {
     public fun evaluateValidityAssuredShortTerm(
         maxShortTermDuration: Duration = 7.days,
         validity: ValidityPeriod,
-        qcStatements: List<QCStatementInfo>,
+        hasValAssured: Boolean,
         hasNoRevAvail: Boolean,
+        hasRevocationInfo: Boolean,
     ): CertificateConstraintEvaluation = CertificateConstraintEvaluation {
-        val isValAssured = qcStatements.any {
-            it.semanticOid == ETSI319412Part1.EXT_ETSI_VAL_ASSURED_ST_CERTS
-        }
-        if (!isValAssured) return@CertificateConstraintEvaluation
+        // Only applies to certificates carrying the validity-assured short-term
+        // extension (ETSI EN 319 412-1 clause 5.2)
+        if (!hasValAssured) return@CertificateConstraintEvaluation
 
         // Check validity period (must be <= 7 days)
         val duration = validity.notAfter - validity.notBefore
@@ -405,8 +415,9 @@ public object CertificateConstraintsEvaluations {
             add(invalidValidityPeriodForValidityAssured(duration))
         }
 
-        // Check noRevocationAvail (must be present)
-        if (!hasNoRevAvail) {
+        // Per EN 319 412-2 GEN-4.3.11-2A, noRevocationAvail is required when the
+        // validity-assured certificate has neither a CRLDP nor an OCSP responder.
+        if (!hasRevocationInfo && !hasNoRevAvail) {
             add(missingNoRevocationAvailForValidityAssured)
         }
     }
@@ -418,7 +429,7 @@ public object CertificateConstraintsEvaluations {
 
     public val missingNoRevocationAvailForValidityAssured: CertificateConstraintViolation
         get() = CertificateConstraintViolation(
-            "Validity-assured certificate must include noRevocationAvail extension (RFC 9608)",
+            "Validity-assured certificate without CRLDP/OCSP must include noRevocationAvail extension (EN 319 412-2 GEN-4.3.11-2A, RFC 9608)",
         )
 
     public fun certificateTypeMismatch(expected: String, actual: String): CertificateConstraintViolation =
@@ -431,17 +442,29 @@ public object CertificateConstraintsEvaluations {
             reason = "CA certificate pathLenConstraint ($actualPathLen) exceeds maximum allowed ($maxPathLen)",
         )
 
-    public val certificateDoesNotContainAnyQCStatement: CertificateConstraintViolation
-        get() = CertificateConstraintViolation(reason = "Certificate does not contain any QCStatement")
+    public val certificateDoesNotContainAnyQCType: CertificateConstraintViolation
+        get() = CertificateConstraintViolation(reason = "Certificate does not contain any QCType")
 
-    public fun certificateDoesNotContainRequiredQCStatement(
-        qcType: String,
-        statements: List<QCStatementInfo>,
+    public fun certificateDoesNotContainRequiredQCType(
+        innerIdentifier: String,
+        qcTypes: List<QCStatementInfo.QcType>,
     ): CertificateConstraintViolation =
         CertificateConstraintViolation(
             reason = buildString {
-                val statementsStr = statements.joinToString { it.semanticOid }
-                append("Certificate does not contain required QCStatement type '$qcType'.")
+                val statementsStr = qcTypes.joinToString { it.innerIdentifier }
+                append("Certificate does not contain required QcType identified by '$innerIdentifier'.")
+                append("Available: $statementsStr")
+            },
+        )
+
+    public fun certificateDoesNotContainRequiredQCStatement(
+        statementId: String,
+        statements: List<QCStatementInfo.OtherQcStatement>,
+    ): CertificateConstraintViolation =
+        CertificateConstraintViolation(
+            reason = buildString {
+                val statementsStr = statements.joinToString { it.statementId }
+                append("Certificate does not contain required QCStatement '$statementId'.")
                 append("Available: $statementsStr")
             },
         )

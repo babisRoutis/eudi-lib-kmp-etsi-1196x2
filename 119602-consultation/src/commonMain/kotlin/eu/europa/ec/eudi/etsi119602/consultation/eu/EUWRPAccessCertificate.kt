@@ -50,12 +50,12 @@ public fun wrpAccessCertificateProfile(
     // Authority Key Identifier required (EN 319 412-2)
     authorityKeyIdentifier()
 
+    // Subject Alternative Name with contact info required (TS 119 411-8)
+    wrpacSubjectAlternativeNames()
+
     // WRPAC must NOT be a validity-assured short-term certificate
     // (ETSI TS 119 411-8, GEN-6.6.1-01 note)
     wrpacMustNotBeValidityAssuredShortTerm()
-
-    // Subject Alternative Name with contact info required (TS 119 411-8)
-    wrpacSubjectAlternativeNames()
 
     // CRL Distribution Points required if no OCSP (EN 319 412-2)
     crlDistributionPointsIfNoOcspAndNotValAssured()
@@ -73,8 +73,15 @@ public fun wrpAccessCertificateProfile(
     // NCP_N and NCP_L do not require QC statements; QCP_N and QCP_L do.
     requireQcStatementsForPolicy { policyOid ->
         when (policyOid) {
-            QCP_N_EUDIWRP -> listOf(ETSI319412.QC_COMPLIANCE, ETSI319412.QC_SSCD)
-            QCP_L_EUDIWRP -> listOf(ETSI319412.QC_COMPLIANCE, ETSI319412.QC_SSCD, ETSI319412.QC_TYPE)
+            QCP_N_EUDIWRP -> listOf(
+                QCStatementInfo.OtherQcStatement(ETSI319412.QC_COMPLIANCE),
+                QCStatementInfo.OtherQcStatement(ETSI319412.QC_SSCD),
+            )
+            QCP_L_EUDIWRP -> listOf(
+                QCStatementInfo.OtherQcStatement(ETSI319412.QC_COMPLIANCE),
+                QCStatementInfo.OtherQcStatement(ETSI319412.QC_SSCD),
+                QCStatementInfo.QcType(ETSI319412.ID_ETSI_QCT_ESEAL),
+            )
             else -> emptyList()
         }
     }
@@ -111,13 +118,11 @@ internal fun ProfileBuilder.wrpacSubjectAlternativeNames() =
  * certificates nor short-term certificates (validity assured) are applicable
  * to wallet-relying party access certificates." A certificate is considered
  * validity-assured short-term when it carries the ext-etsi-valassured-ST-certs
- * QC statement (ETSI EN 319 412-1).
+ * extension (ETSI EN 319 412-1 clause 5.2).
  */
 internal fun ProfileBuilder.wrpacMustNotBeValidityAssuredShortTerm() {
-    qcStatements(ETSI319412Part1.EXT_ETSI_VAL_ASSURED_ST_CERTS) { valAssuredStatements ->
-        if (valAssuredStatements.isEmpty()) {
-            CertificateConstraintEvaluation.Met
-        } else {
+    hasExtension(ETSI319412Part1.EXT_ETSI_VAL_ASSURED_ST_CERTS) { hasValAssured ->
+        if (hasValAssured) {
             CertificateConstraintEvaluation {
                 add(
                     CertificateConstraintViolation(
@@ -125,6 +130,8 @@ internal fun ProfileBuilder.wrpacMustNotBeValidityAssuredShortTerm() {
                     ),
                 )
             }
+        } else {
+            CertificateConstraintEvaluation.Met
         }
     }
 }

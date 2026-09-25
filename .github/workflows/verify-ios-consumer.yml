@@ -1,9 +1,7 @@
 name: Verify iOS consumer linking
 
 on:
-  pull_request:
-    types: [ opened, reopened, synchronize ]
-  push:
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 package eu.europa.ec.eudi.verification
 
 import eu.europa.ec.eudi.etsi1196x2.consultation.pkix.PKIXCertificateInspector

@@ -180,6 +180,10 @@ not the framework path itself.
 - **`Undefined symbols for architecture arm64: "_OBJC_CLASS_$__TtC10PKIXBridge…"`** —
   `PKIXBridge` is not on the link line. Apply the recipe above for the target you are
   building (device vs simulator slice).
+- **`This declaration needs opt-in ... ExperimentalForeignApi`** — the cinterop
+  (`PKIXValidator`, `PKIXConfiguration`, …) API is experimental. Mark the using file or
+  class with `@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)` (or add
+  `kotlinx.cinterop.ExperimentalForeignApi` to the target's `compilerOptions.optIn`).
 - **The error appears only in one task** (e.g. `iosSimulatorArm64Test` but not the debug
   framework) — expected. Configure `linkerOpts` per binary type/target as shown.
 - **The build succeeded until I added a test that calls the trust API** — expected.

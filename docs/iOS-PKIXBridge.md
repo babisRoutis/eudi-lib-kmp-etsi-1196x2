@@ -208,5 +208,9 @@ not the framework path itself.
 - [#176](https://github.com/eu-digital-identity-wallet/eudi-lib-kmp-etsi-1196x2/issues/176) —
   the tracking issue for making the `PKIXBridge` requirement documented and consumable.
 - [Root README, iOS section](../README.md#ios) — channel comparison for consumers.
+- [`verification/ios-consumer`](../verification/ios-consumer) — the CI harness that
+  verifies this documented recipe actually links (<code>verify-docs-ios-consumer</code>
+  job in `.github/workflows/verify-ios-consumer.yml`); keep the `linkerOpts` blocks in
+  sync with it.
 - `ios/cinterop/Package.swift`, `ios/cinterop/scripts/build-xcframework.sh`,
   `consultation/build.gradle.kts` — the library's own build wiring this document mirrors.
